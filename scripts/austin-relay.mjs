@@ -1,0 +1,6 @@
+import {createServer} from 'node:http';
+import {timingSafeEqual} from 'node:crypto';
+const expected=process.env.AUSTIN_API_KEY;if(!expected)throw Error('AUSTIN_API_KEY wajib.');
+const equal=(a,b)=>{const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&timingSafeEqual(x,y);};
+const allowed=/^\/api\/(account|deposit\/(create|history|check\/APG-[A-Za-z0-9-]+))$/;
+createServer(async(req,res)=>{const url=new URL(req.url,'http://local');if(!allowed.test(url.pathname)||!equal(String(req.headers['x-api-key']||''),expected)||!['GET','POST'].includes(req.method)){res.writeHead(403);res.end();return;}let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>20000){res.writeHead(413);res.end();return;}chunks.push(chunk);}const headers={};for(const k of ['x-api-key','x-timestamp','x-signature','content-type'])if(req.headers[k])headers[k]=req.headers[k];try{const upstream=await fetch('https://austinstore.id'+url.pathname+url.search,{method:req.method,headers,body:req.method==='POST'?Buffer.concat(chunks):undefined,signal:AbortSignal.timeout(20000)});res.writeHead(upstream.status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(await upstream.text());}catch{res.writeHead(502);res.end('{"success":false}');}}).listen(Number(process.env.RELAY_PORT||3099),'127.0.0.1');
